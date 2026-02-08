@@ -1,54 +1,63 @@
 const axios = require('axios');
 const fs = require('fs');
+const path = require('path');
 
 const URL = 'https://huggingface.co/api/resolve-cache/datasets/MMG/SpanishBFF/893b20897a66275ef9a5105da5b4a98847cc1694/SpanishBFF_0_2.json?%2Fdatasets%2FMMG%2FSpanishBFF%2Fresolve%2Fmain%2FSpanishBFF_0_2.json=&etag=%227e07f9a507f9ddf3ce3f6e703688490def4d8965%22';
 
-async function descargarYProcesar() {
+// Directorio de salida (puedes apuntar esto a tu carpeta assets de Angular)
+const OUTPUT_DIR = './diccionarios';
+
+if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR);
+}
+
+async function procesar() {
     try {
-        console.log('Descargando diccionario (esto puede tardar un poco)...');
-        const response = await axios.get(URL);
-        const datos = response.data;
+        console.log('Descargando datos...');
+        const { data } = await axios.get(URL);
 
-        // Objeto donde agruparemos por longitud
-        const diccionarioFiltrado = {
-            "4": [], "5": [], "6": [], "7": [], "8": [], "9": []
-        };
+        // Mapa para organizar las palabras
+        const colecciones = { 4: [], 5: [], 6: [], 7: [], 8: [], 9: [] };
 
-        console.log('Procesando palabras...');
+        console.log('Limpiando y clasificando palabras...');
 
-        datos.forEach(item => {
+        data.forEach(item => {
             if (item.lemma) {
-                // Limpiamos la palabra: pasamos a mayúsculas y quitamos espacios
+                // 1. A mayúsculas y quitar espacios
                 let palabra = item.lemma.toUpperCase().trim();
-                
-                // Opcional: Eliminar tildes para que el juego sea más sencillo
-                // palabra = palabra.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-                const longitud = palabra.length.toString();
+                // 2. Quitar tildes y eñes (opcional pero recomendado para Wordle)
+                palabra = palabra.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-                // Si la longitud está en nuestro rango deseado y es una sola palabra (sin espacios)
-                if (diccionarioFiltrado.hasOwnProperty(longitud) && !palabra.includes(' ')) {
-                    // Evitamos duplicados
-                    if (!diccionarioFiltrado[longitud].includes(palabra)) {
-                        diccionarioFiltrado[longitud].push(palabra);
+                const len = palabra.length;
+
+                // 3. Filtrar: solo palabras de una sola pieza y longitud 4-9
+                if (len >= 4 && len <= 9 && !palabra.includes(' ')) {
+                    if (!colecciones[len].includes(palabra)) {
+                        colecciones[len].push(palabra);
                     }
                 }
             }
         });
 
-        // Guardar el resultado en un archivo JSON
-        const nombreArchivo = 'diccionario.json';
-        fs.writeFileSync(nombreArchivo, JSON.stringify(diccionarioFiltrado, null, 2));
+        // 4. Generar archivos individuales
+        console.log('Guardando archivos...');
+        Object.entries(colecciones).forEach(([key, lista]) => {
+            const fileName = `diccionario${key}letras.json`;
+            const filePath = path.join(OUTPUT_DIR, fileName);
+            
+            // Ordenar alfabéticamente antes de guardar (opcional pero prolijo)
+            lista.sort();
 
-        console.log(`¡Listo! Archivo generado: ${nombreArchivo}`);
-        console.log('Resumen de palabras encontradas:');
-        Object.keys(diccionarioFiltrado).forEach(len => {
-            console.log(`${len} letras: ${diccionarioFiltrado[len].length} palabras`);
+            fs.writeFileSync(filePath, JSON.stringify(lista, null, 2));
+            console.log(`✅ Creado: ${fileName} (${lista.length} palabras)`);
         });
 
+        console.log('\n¡Proceso terminado con éxito!');
+
     } catch (error) {
-        console.error('Error al procesar el diccionario:', error.message);
+        console.error('Error fatal:', error.message);
     }
 }
 
-descargarYProcesar();
+procesar();
